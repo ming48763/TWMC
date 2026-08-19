@@ -15,3 +15,4 @@ test3.py
 test4.py
 _*.json
 _*.py
+backend/data/

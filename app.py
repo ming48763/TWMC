@@ -13,6 +13,7 @@ from urllib.parse import quote
 from pathlib import Path
 import hmac
 import importlib
+import api_client as api
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 import portfolio as pf
@@ -72,12 +73,61 @@ def _is_streamlit_cloud():
     )
 
 
+def _finish_api_login(result):
+    st.session_state.api_token = result.get("access_token") or ""
+    st.session_state.api_user = result.get("user") or {}
+    try:
+        api.seed_from_local_if_empty()
+    except Exception:
+        pass
+    st.rerun()
+
+
 _APP_PASSWORD = _secret_text("APP_PASSWORD")
-if _is_streamlit_cloud() and not _APP_PASSWORD:
-    st.error("雲端尚未設定 APP_PASSWORD。請到 Manage app → Settings → Secrets 加上密碼，避免持倉被公開看見。")
-    st.code('APP_PASSWORD = "你自己的密碼"', language="toml")
+if api.enabled():
+    if not api.logged_in():
+        st.markdown(
+            """
+            <style>
+            .twmc-login-h { text-align:center; font-size:2rem; font-weight:800; margin: 1.5rem 0 0.3rem; }
+            .twmc-login-s { text-align:center; color:#bdbdbd; margin-bottom:1.2rem; }
+            </style>
+            <div class="twmc-login-h">TWMC</div>
+            <div class="twmc-login-s">登入後端帳號後，卡片與持倉只會是你的</div>
+            """,
+            unsafe_allow_html=True,
+        )
+        if not api.health():
+            st.error(f"連不到後端：{api.base_url()}。請確認 API 已啟動。")
+        mode = st.radio("動作", ["登入", "註冊"], horizontal=True, label_visibility="collapsed")
+        with st.form("twmc_api_login"):
+            email = st.text_input("信箱")
+            password = st.text_input("密碼", type="password")
+            confirm = ""
+            if mode == "註冊":
+                confirm = st.text_input("再輸入一次密碼", type="password")
+            submitted = st.form_submit_button(mode, type="primary", use_container_width=True)
+        if submitted:
+            try:
+                if not email or not password:
+                    st.error("請輸入信箱與密碼")
+                elif mode == "註冊" and password != confirm:
+                    st.error("兩次密碼不一致")
+                elif mode == "註冊":
+                    _finish_api_login(api.register(email.strip(), password))
+                else:
+                    _finish_api_login(api.login(email.strip(), password))
+            except Exception as exc:
+                st.error(str(exc))
+        st.stop()
+elif _is_streamlit_cloud() and not _APP_PASSWORD:
+    st.error("雲端請設定 API_BASE_URL（後端登入）或 APP_PASSWORD（單一共用密碼）。")
+    st.code(
+        'API_BASE_URL = "https://你的後端網址"\nAPP_PASSWORD = "暫時密碼"',
+        language="toml",
+    )
     st.stop()
-if _APP_PASSWORD:
+elif _APP_PASSWORD:
     if not st.session_state.get("twmc_unlocked"):
         st.markdown("### TWMC")
         st.caption("此為私人工具，請輸入密碼。")
@@ -275,11 +325,12 @@ def save_watchlist_store(store):
     with open(tmp, "w", encoding="utf-8") as f:
         json.dump(payload, f, ensure_ascii=False, indent=2)
     tmp.replace(WATCHLIST_FILE)
+    api.put_blob("watchlist", payload)
 
 
 def load_watchlist_store():
-    raw = None
-    if WATCHLIST_FILE.exists():
+    raw = api.get_blob("watchlist") if api.logged_in() else None
+    if raw is None and WATCHLIST_FILE.exists():
         try:
             with open(WATCHLIST_FILE, "r", encoding="utf-8") as f:
                 raw = json.load(f)
@@ -287,6 +338,8 @@ def load_watchlist_store():
             raw = None
     store, migrated = _normalize_store(raw if raw is not None else ["2330", "6182"])
     if migrated or raw is None:
+        save_watchlist_store(store)
+    elif api.logged_in() and api.get_blob("watchlist") is None:
         save_watchlist_store(store)
     return store
 
@@ -577,6 +630,13 @@ def _empty_notes_store():
 
 
 def load_investment_notes():
+    if api.logged_in():
+        remote = api.get_blob("notes")
+        if isinstance(remote, dict) and isinstance(remote.get("notes"), dict):
+            notes = {}
+            for code, entry in remote["notes"].items():
+                notes[str(code)] = _normalize_note_entry(entry)
+            return {"version": 2, "notes": notes}
     if NOTES_FILE.exists():
         try:
             with open(NOTES_FILE, "r", encoding="utf-8") as f:
@@ -610,6 +670,7 @@ def save_investment_notes(store=None):
     with open(tmp, "w", encoding="utf-8") as f:
         json.dump(cleaned, f, ensure_ascii=False, indent=2)
     tmp.replace(NOTES_FILE)
+    api.put_blob("notes", cleaned)
     if store is None:
         st.session_state.investment_notes = cleaned
     return cleaned
@@ -702,6 +763,10 @@ def all_codes():
 
 _store = load_watchlist_store()
 _pf_store = pf.load_store()
+if api.logged_in():
+    remote_pf = api.get_blob("portfolio")
+    if isinstance(remote_pf, dict):
+        _pf_store, _ = pf.normalize_store(remote_pf)
 if "app_mode" not in st.session_state:
     st.session_state.app_mode = _pf_store.get("active_mode", "analyze")
 if "mode_boxes" not in st.session_state:
@@ -731,6 +796,16 @@ if "notes_just_saved" not in st.session_state:
 def persist_portfolio():
     st.session_state.portfolio["active_mode"] = st.session_state.app_mode
     pf.save_store(st.session_state.portfolio)
+    book = st.session_state.portfolio
+    api.put_blob(
+        "portfolio",
+        {
+            "version": 1,
+            "active_mode": book.get("active_mode", "analyze"),
+            "simulated": book["simulated"],
+            "investment": book["investment"],
+        },
+    )
 
 
 @st.cache_data(ttl=60 * 60)
@@ -2081,11 +2156,21 @@ def save_mainforce_history(code, payload):
     with open(tmp, "w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False, indent=2)
     tmp.replace(path)
+    api.put_mainforce(code, data)
     return data
 
 
 def load_mainforce_history(code):
     code = str(code or "").strip().upper()
+    if api.logged_in():
+        remote = api.get_mainforce(code)
+        if isinstance(remote, dict):
+            rows = remote.get("rows") or []
+            if not isinstance(rows, list):
+                rows = []
+            remote["rows"] = rows
+            remote["code"] = code
+            return remote
     path = mainforce_store_path(code)
     if not path.exists():
         return None
@@ -7695,6 +7780,17 @@ _cards_session = taiwan_equity_session_status()
 _cards_live_every = (
     timedelta(seconds=2) if _cards_session.get("是否開盤中") else None
 )
+
+if api.logged_in():
+    user_email = (st.session_state.get("api_user") or {}).get("email") or ""
+    acc, btn = st.columns([5, 1])
+    with acc:
+        st.caption(f"已登入 {user_email}")
+    with btn:
+        if st.button("登出", use_container_width=True, key="twmc_logout"):
+            for key in ("api_token", "api_user"):
+                st.session_state.pop(key, None)
+            st.rerun()
 
 with st.container(key="mode_switch_wrap"):
     mode_event = mode_switch_component(
