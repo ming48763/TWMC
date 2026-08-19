@@ -103,9 +103,22 @@ if api.enabled():
                 "請把後端部署到 Railway／Render，再把 Secrets 的 API_BASE_URL 改成公開網址。"
                 "若要在本機登入，請開 http://localhost:8501 而不是 .streamlit.app。"
             )
-        elif not api.health():
-            st.error(f"連不到後端：{api.base_url()}。請確認後端視窗還在跑，瀏覽器可打開該網址。")
+        else:
+            info = api.health_payload()
+            if not info:
+                st.error(
+                    f"連不到後端：{api.base_url()}。"
+                    "Render 免費版休眠後第一次連線可能要等約 1 分鐘，請重新整理再試。"
+                )
+            elif not info.get("db_persistent") and not info.get("users"):
+                st.warning(
+                    "這個後端目前沒有任何帳號。本機註冊的帳號不會出現在 Render；"
+                    "服務休眠或重新部署也會清空 SQLite。請先用「註冊」建立帳號。"
+                )
+            elif not info.get("users"):
+                st.warning("這個後端目前沒有帳號，請先註冊。")
         mode = st.radio("動作", ["登入", "註冊"], horizontal=True, label_visibility="collapsed")
+        st.caption("帳號請用英文、數字或底線（3～32 字）。另一台裝置必須連同一個後端網址。")
         with st.form("twmc_api_login"):
             email = st.text_input("帳號")
             password = st.text_input("密碼", type="password")
@@ -120,9 +133,9 @@ if api.enabled():
                 elif mode == "註冊" and password != confirm:
                     st.error("兩次密碼不一致")
                 elif mode == "註冊":
-                    _finish_api_login(api.register(email.strip(), password))
+                    _finish_api_login(api.register(email.strip(), password.strip()))
                 else:
-                    _finish_api_login(api.login(email.strip(), password))
+                    _finish_api_login(api.login(email.strip(), password.strip()))
             except Exception as exc:
                 st.error(str(exc))
         st.stop()
