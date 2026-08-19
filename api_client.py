@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import os
+import time
 from pathlib import Path
 
 import requests
@@ -58,12 +59,21 @@ def _url(path):
     return f"{base_url()}{path}"
 
 
-def health():
+def health_payload():
+    """回傳 /health JSON；連不上則 None。單次探測，避免登入頁卡住。"""
     try:
-        res = requests.get(_url("/health"), timeout=6)
-        return res.ok
+        res = requests.get(_url("/health"), timeout=10)
+        if not res.ok:
+            return None
+        data = res.json()
+        return data if isinstance(data, dict) else {"ok": True}
     except Exception:
-        return False
+        return None
+
+
+def health():
+    payload = health_payload()
+    return bool(payload and payload.get("ok"))
 
 
 def _raise_detail(res):
@@ -76,26 +86,38 @@ def _raise_detail(res):
     raise RuntimeError(str(detail or f"HTTP {res.status_code}"))
 
 
+def _post_auth(path, username, password):
+    payload = {
+        "username": str(username or "").strip(),
+        "password": str(password or "").strip(),
+    }
+    last_exc = None
+    for attempt in range(3):
+        try:
+            res = requests.post(_url(path), json=payload, timeout=30)
+            if res.status_code in {502, 503, 504} and attempt < 2:
+                time.sleep(4)
+                continue
+            if not res.ok:
+                _raise_detail(res)
+            return res.json()
+        except (requests.ConnectionError, requests.Timeout) as exc:
+            last_exc = exc
+            if attempt < 2:
+                time.sleep(4)
+                continue
+            raise RuntimeError(
+                "連不到後端（Render 免費版休眠後第一次可能要等約 1 分鐘）。請再試一次。"
+            ) from last_exc
+    raise RuntimeError("連不到後端，請稍後再試。")
+
+
 def login(username, password):
-    res = requests.post(
-        _url("/auth/login"),
-        json={"username": username, "password": password},
-        timeout=12,
-    )
-    if not res.ok:
-        _raise_detail(res)
-    return res.json()
+    return _post_auth("/auth/login", username, password)
 
 
 def register(username, password):
-    res = requests.post(
-        _url("/auth/register"),
-        json={"username": username, "password": password},
-        timeout=12,
-    )
-    if not res.ok:
-        _raise_detail(res)
-    return res.json()
+    return _post_auth("/auth/register", username, password)
 
 
 def get_blob(kind):

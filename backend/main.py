@@ -19,7 +19,8 @@ from pydantic import BaseModel, Field
 
 ROOT = Path(__file__).resolve().parent
 DATA_DIR = ROOT / "data"
-DB_PATH = DATA_DIR / "twmc.db"
+# Render 預設磁碟會在休眠／重新部署後清空。請掛 Persistent Disk，並設 DATABASE_PATH。
+DB_PATH = Path(os.environ.get("DATABASE_PATH") or (DATA_DIR / "twmc.db"))
 JWT_SECRET = os.environ.get("JWT_SECRET") or "twmc-dev-change-me"
 JWT_DAYS = int(os.environ.get("JWT_DAYS") or "30")
 ALLOW_REGISTER = str(os.environ.get("ALLOW_REGISTER") or "true").lower() in {
@@ -48,6 +49,7 @@ def _b64url_decode(text: str) -> bytes:
 
 
 def hash_password(password: str) -> str:
+    password = str(password or "").strip()
     salt = os.urandom(16)
     dk = hashlib.pbkdf2_hmac("sha256", password.encode("utf-8"), salt, 120_000)
     return f"{salt.hex()}:{dk.hex()}"
@@ -55,6 +57,7 @@ def hash_password(password: str) -> str:
 
 def verify_password(password: str, stored: str) -> bool:
     try:
+        password = str(password or "").strip()
         salt_hex, dk_hex = stored.split(":", 1)
         salt = bytes.fromhex(salt_hex)
         expected = bytes.fromhex(dk_hex)
@@ -91,7 +94,7 @@ def read_token(token: str) -> dict:
 
 @contextmanager
 def db():
-    DATA_DIR.mkdir(parents=True, exist_ok=True)
+    DB_PATH.parent.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
     try:
@@ -106,8 +109,13 @@ def normalize_username(raw: str) -> str:
     if "@" in text:
         text = text.split("@", 1)[0]
     text = text.lower()
-    if not re.fullmatch(r"[a-z0-9_]{3,32}", text):
-        raise HTTPException(status_code=422, detail="帳號請用 3～32 字的英文、數字或底線")
+    if not re.fullmatch(r"[a-z0-9][a-z0-9._-]{1,30}[a-z0-9_]", text) and not re.fullmatch(
+        r"[a-z0-9_]{3,32}", text
+    ):
+        raise HTTPException(
+            status_code=422,
+            detail="帳號請用 3～32 字的英文、數字、底線（可用點或連字號）；不要用中文",
+        )
     return text
 
 
@@ -214,7 +222,14 @@ def root():
 
 @app.get("/health")
 def health():
-    return {"ok": True, "service": "twmc"}
+    with db() as conn:
+        users = conn.execute("SELECT COUNT(*) AS n FROM users").fetchone()["n"]
+    return {
+        "ok": True,
+        "service": "twmc",
+        "users": int(users or 0),
+        "db_persistent": bool(str(os.environ.get("DATABASE_PATH") or "").strip()),
+    }
 
 
 @app.post("/auth/register")
