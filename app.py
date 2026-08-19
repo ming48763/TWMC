@@ -11,6 +11,7 @@ import re
 from xml.etree import ElementTree as ET
 from urllib.parse import quote
 from pathlib import Path
+import hmac
 import importlib
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
@@ -48,6 +49,47 @@ st.set_page_config(
     layout="wide",
     initial_sidebar_state="collapsed"
 )
+
+
+def _secret_text(*keys):
+    for key in keys:
+        val = str(os.environ.get(key) or "").strip()
+        if val:
+            return val
+        try:
+            val = str(st.secrets.get(key, "") or "").strip()
+        except Exception:
+            val = ""
+        if val:
+            return val
+    return ""
+
+
+def _is_streamlit_cloud():
+    return Path("/mount/src").exists() or bool(
+        os.environ.get("STREAMLIT_RUNTIME") == "cloud"
+        or os.environ.get("STREAMLIT_SHARING_MODE")
+    )
+
+
+_APP_PASSWORD = _secret_text("APP_PASSWORD")
+if _is_streamlit_cloud() and not _APP_PASSWORD:
+    st.error("雲端尚未設定 APP_PASSWORD。請到 Manage app → Settings → Secrets 加上密碼，避免持倉被公開看見。")
+    st.code('APP_PASSWORD = "你自己的密碼"', language="toml")
+    st.stop()
+if _APP_PASSWORD:
+    if not st.session_state.get("twmc_unlocked"):
+        st.markdown("### TWMC")
+        st.caption("此為私人工具，請輸入密碼。")
+        with st.form("twmc_gate"):
+            entered = st.text_input("密碼", type="password")
+            submitted = st.form_submit_button("進入", type="primary")
+        if submitted:
+            if hmac.compare_digest(entered, _APP_PASSWORD):
+                st.session_state.twmc_unlocked = True
+                st.rerun()
+            st.error("密碼不正確")
+        st.stop()
 
 # 透過 CSS 放大整個介面的文字大小
 st.markdown("""
