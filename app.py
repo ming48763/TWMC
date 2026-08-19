@@ -12,8 +12,25 @@ from xml.etree import ElementTree as ET
 from urllib.parse import quote
 from pathlib import Path
 import importlib
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
 import portfolio as pf
 pf = importlib.reload(pf)
+
+# 報價連線重複使用，減少每次握手延遲（Streamlit Cloud 在海外時特別明顯）
+_HTTP = requests.Session()
+_HTTP.headers.update({
+    "User-Agent": "Mozilla/5.0",
+    "Accept": "application/json,text/plain,*/*",
+})
+_HTTP.mount(
+    "https://",
+    HTTPAdapter(
+        pool_connections=8,
+        pool_maxsize=8,
+        max_retries=Retry(total=1, backoff_factor=0.15, status_forcelist=(502, 503, 504)),
+    ),
+)
 
 # 台北時間（固定 UTC+8，免依賴 tzdata）
 TPE_TZ = timezone(timedelta(hours=8))
@@ -3256,7 +3273,7 @@ def _mis_parse_price(row):
     return None, None
 
 
-@st.cache_data(ttl=2)
+@st.cache_data(ttl=3)
 def fetch_mis_quotes(codes):
     """
     證交所／櫃買 MIS 近即時報價（非 Yahoo 的 20 分延遲）。
@@ -3265,31 +3282,26 @@ def fetch_mis_quotes(codes):
     codes = [str(c).strip().upper() for c in (codes or []) if str(c or "").strip()]
     if not codes:
         return {}
-    # 去重並組 batch；失敗代號再試另一板
-    ex_map = {}
+    # 一次同時問上市＋上櫃，避免先打 Yahoo 判斷板塊而變慢
+    ex_list = []
+    seen = set()
+    def _add(ex):
+        if ex and ex not in seen:
+            seen.add(ex)
+            ex_list.append(ex)
     for code in codes:
-        ex = resolve_mis_ex_ch(code)
-        if ex:
-            ex_map[code] = ex
-    ex_list = list(dict.fromkeys(ex_map.values()))
-    alt = []
-    for code, ex in ex_map.items():
-        if code in ("TAIEX", "T00") or code.startswith("^"):
+        if code in ("TAIEX", "T00", "^TWII"):
+            _add("tse_t00.tw")
             continue
-        if ex.startswith("tse_"):
-            alt.append(f"otc_{code}.tw")
-        elif ex.startswith("otc_"):
-            alt.append(f"tse_{code}.tw")
-    ex_param = "|".join(ex_list + [a for a in alt if a not in ex_list])
+        _add(f"tse_{code}.tw")
+        _add(f"otc_{code}.tw")
+    ex_param = "|".join(ex_list)
     try:
-        resp = requests.get(
+        resp = _HTTP.get(
             "https://mis.twse.com.tw/stock/api/getStockInfo.jsp",
             params={"ex_ch": ex_param, "json": 1, "delay": 0},
-            headers={
-                "User-Agent": "Mozilla/5.0",
-                "Referer": "https://mis.twse.com.tw/stock/fibest.jsp",
-            },
-            timeout=12,
+            headers={"Referer": "https://mis.twse.com.tw/stock/fibest.jsp"},
+            timeout=(2.5, 5),
         )
         payload = resp.json()
     except Exception:
@@ -3361,7 +3373,7 @@ def fetch_mis_quotes(codes):
     return out
 
 
-@st.cache_data(ttl=2)
+@st.cache_data(ttl=3)
 def get_live_quote(code):
     """盤中報價優先 MIS；失敗再 Yahoo（Yahoo 台股約延遲 20 分）。回傳 (price, prev) 或 None。"""
     code = str(code or "").strip().upper()
@@ -3430,7 +3442,7 @@ def get_yahoo_intraday(code):
         return None, pd.DataFrame()
 
 
-@st.cache_data(ttl=2)
+@st.cache_data(ttl=3)
 def get_index_live_summary():
     """加權指數近即時（MIS t00）；失敗才退 Yahoo（約 20 分延遲）。"""
     mis = fetch_mis_quotes(["TAIEX"]).get("TAIEX")

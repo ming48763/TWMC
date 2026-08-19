@@ -7,10 +7,11 @@ __pycache__/
 .venv/
 venv/
 ai_analysis_history/
-mainforce_history/
-watchlist.json
-portfolio.json
-investment_notes.json
 name_map.json
+6182.html
+test.py
+test2.py
+test3.py
+test4.py
 _*.json
 _*.py

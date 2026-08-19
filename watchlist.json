@@ -1,0 +1,88 @@
+{
+  "version": 3,
+  "modes": {
+    "analyze": {
+      "groups": [
+        {
+          "id": "custom-1",
+          "name": "自定義1",
+          "items": [
+            "2330",
+            "6182",
+            "0050",
+            "8069",
+            "009826",
+            "3481",
+            "00850",
+            "2885",
+            "6770",
+            "2327",
+            "00995A"
+          ]
+        },
+        {
+          "id": "custom-2",
+          "name": "觀察中",
+          "items": [
+            "2308",
+            "0056",
+            "6669",
+            "8033"
+          ]
+        },
+        {
+          "id": "custom-3",
+          "name": "長期模式",
+          "items": []
+        },
+        {
+          "id": "custom-4",
+          "name": "短線操作",
+          "items": []
+        }
+      ],
+      "active_group_id": "custom-2",
+      "active_code": "8033"
+    },
+    "simulated": {
+      "groups": [
+        {
+          "id": "custom-1",
+          "name": "自定義1",
+          "items": [
+            "0050"
+          ]
+        }
+      ],
+      "active_group_id": "custom-1",
+      "active_code": "0050"
+    },
+    "investment": {
+      "groups": [
+        {
+          "id": "custom-1",
+          "name": "長期持股",
+          "items": [
+            "0050",
+            "00850",
+            "2885",
+            "009826",
+            "00995A"
+          ]
+        },
+        {
+          "id": "custom-2",
+          "name": "短線操作",
+          "items": [
+            "6182",
+            "3481",
+            "8069",
+            "6770"
+          ]
+        }
+      ],
+      "active_group_id": "all",
+      "active_code": "6770"
+    }
+  }
+}
