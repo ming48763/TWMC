@@ -11,7 +11,6 @@ import re
 from xml.etree import ElementTree as ET
 from urllib.parse import quote
 from pathlib import Path
-import hmac
 import importlib
 import api_client as api
 from requests.adapters import HTTPAdapter
@@ -51,101 +50,6 @@ st.set_page_config(
     initial_sidebar_state="collapsed"
 )
 
-
-def _secret_text(*keys):
-    for key in keys:
-        val = str(os.environ.get(key) or "").strip()
-        if val:
-            return val
-        try:
-            val = str(st.secrets.get(key, "") or "").strip()
-        except Exception:
-            val = ""
-        if val:
-            return val
-    return ""
-
-
-def _is_streamlit_cloud():
-    return Path("/mount/src").exists() or bool(
-        os.environ.get("STREAMLIT_RUNTIME") == "cloud"
-        or os.environ.get("STREAMLIT_SHARING_MODE")
-    )
-
-
-def _finish_api_login(result):
-    st.session_state.api_token = result.get("access_token") or ""
-    st.session_state.api_user = result.get("user") or {}
-    try:
-        api.seed_from_local_if_empty()
-    except Exception:
-        pass
-    st.rerun()
-
-
-_APP_PASSWORD = _secret_text("APP_PASSWORD")
-if api.enabled():
-    if not api.logged_in():
-        st.markdown(
-            """
-            <style>
-            .twmc-login-h { text-align:center; font-size:2rem; font-weight:800; margin: 1.5rem 0 0.3rem; }
-            .twmc-login-s { text-align:center; color:#bdbdbd; margin-bottom:1.2rem; }
-            </style>
-            <div class="twmc-login-h">TWMC</div>
-            <div class="twmc-login-s">登入後端帳號後，卡片與持倉只會是你的</div>
-            """,
-            unsafe_allow_html=True,
-        )
-        if api.is_loopback() and _is_streamlit_cloud():
-            st.error(
-                "雲端 App 無法連你電腦上的 http://127.0.0.1:8000。"
-                "請把後端部署到 Railway／Render，再把 Secrets 的 API_BASE_URL 改成公開網址。"
-                "若要在本機登入，請開 http://localhost:8501 而不是 .streamlit.app。"
-            )
-        elif not api.health():
-            st.error(f"連不到後端：{api.base_url()}。請確認後端視窗還在跑，瀏覽器可打開該網址。")
-        mode = st.radio("動作", ["登入", "註冊"], horizontal=True, label_visibility="collapsed")
-        with st.form("twmc_api_login"):
-            email = st.text_input("帳號")
-            password = st.text_input("密碼", type="password")
-            confirm = ""
-            if mode == "註冊":
-                confirm = st.text_input("再輸入一次密碼", type="password")
-            submitted = st.form_submit_button(mode, type="primary", use_container_width=True)
-        if submitted:
-            try:
-                if not email or not password:
-                    st.error("請輸入帳號與密碼")
-                elif mode == "註冊" and password != confirm:
-                    st.error("兩次密碼不一致")
-                elif mode == "註冊":
-                    _finish_api_login(api.register(email.strip(), password))
-                else:
-                    _finish_api_login(api.login(email.strip(), password))
-            except Exception as exc:
-                st.error(str(exc))
-        st.stop()
-elif _is_streamlit_cloud() and not _APP_PASSWORD:
-    st.error("雲端請設定 API_BASE_URL（後端登入）或 APP_PASSWORD（單一共用密碼）。")
-    st.code(
-        'API_BASE_URL = "https://你的後端網址"\nAPP_PASSWORD = "暫時密碼"',
-        language="toml",
-    )
-    st.stop()
-elif _APP_PASSWORD:
-    if not st.session_state.get("twmc_unlocked"):
-        st.markdown("### TWMC")
-        st.caption("此為私人工具，請輸入密碼。")
-        with st.form("twmc_gate"):
-            entered = st.text_input("密碼", type="password")
-            submitted = st.form_submit_button("進入", type="primary")
-        if submitted:
-            if hmac.compare_digest(entered, _APP_PASSWORD):
-                st.session_state.twmc_unlocked = True
-                st.rerun()
-            st.error("密碼不正確")
-        st.stop()
 
 # 透過 CSS 放大整個介面的文字大小
 st.markdown("""

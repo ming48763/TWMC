@@ -8,6 +8,8 @@ from pathlib import Path
 import requests
 
 ROOT = Path(__file__).resolve().parent
+# 暫時拔掉 Streamlit ↔ FastAPI，卡片／持倉改走本機 JSON，不必登入。
+STREAMLIT_API_ENABLED = False
 
 
 def _secret(key, default=""):
@@ -31,7 +33,7 @@ def is_loopback():
 
 
 def enabled():
-    return bool(base_url())
+    return STREAMLIT_API_ENABLED and bool(base_url())
 
 
 def _token():
