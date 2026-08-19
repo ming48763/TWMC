@@ -107,7 +107,7 @@ if api.enabled():
             st.error(f"連不到後端：{api.base_url()}。請確認後端視窗還在跑，瀏覽器可打開該網址。")
         mode = st.radio("動作", ["登入", "註冊"], horizontal=True, label_visibility="collapsed")
         with st.form("twmc_api_login"):
-            email = st.text_input("信箱")
+            email = st.text_input("帳號")
             password = st.text_input("密碼", type="password")
             confirm = ""
             if mode == "註冊":
@@ -116,7 +116,7 @@ if api.enabled():
         if submitted:
             try:
                 if not email or not password:
-                    st.error("請輸入信箱與密碼")
+                    st.error("請輸入帳號與密碼")
                 elif mode == "註冊" and password != confirm:
                     st.error("兩次密碼不一致")
                 elif mode == "註冊":
@@ -7788,10 +7788,10 @@ _cards_live_every = (
 )
 
 if api.logged_in():
-    user_email = (st.session_state.get("api_user") or {}).get("email") or ""
+    user_name = (st.session_state.get("api_user") or {}).get("username") or ""
     acc, btn = st.columns([5, 1])
     with acc:
-        st.caption(f"已登入 {user_email}")
+        st.caption(f"已登入 {user_name}")
     with btn:
         if st.button("登出", use_container_width=True, key="twmc_logout"):
             for key in ("api_token", "api_user"):

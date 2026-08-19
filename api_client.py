@@ -76,10 +76,10 @@ def _raise_detail(res):
     raise RuntimeError(str(detail or f"HTTP {res.status_code}"))
 
 
-def login(email, password):
+def login(username, password):
     res = requests.post(
         _url("/auth/login"),
-        json={"email": email, "password": password},
+        json={"username": username, "password": password},
         timeout=12,
     )
     if not res.ok:
@@ -87,10 +87,10 @@ def login(email, password):
     return res.json()
 
 
-def register(email, password):
+def register(username, password):
     res = requests.post(
         _url("/auth/register"),
-        json={"email": email, "password": password},
+        json={"username": username, "password": password},
         timeout=12,
     )
     if not res.ok:

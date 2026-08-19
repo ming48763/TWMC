@@ -6,6 +6,7 @@ import hashlib
 import hmac
 import json
 import os
+import re
 import sqlite3
 import time
 import uuid
@@ -63,10 +64,10 @@ def verify_password(password: str, stored: str) -> bool:
         return False
 
 
-def make_token(user_id: str, email: str) -> str:
+def make_token(user_id: str, username: str) -> str:
     payload = {
         "sub": user_id,
-        "email": email,
+        "username": username,
         "exp": int(time.time()) + JWT_DAYS * 86400,
     }
     body = _b64url(json.dumps(payload, separators=(",", ":")).encode("utf-8"))
@@ -100,18 +101,53 @@ def db():
         conn.close()
 
 
+def normalize_username(raw: str) -> str:
+    text = str(raw or "").strip()
+    if "@" in text:
+        text = text.split("@", 1)[0]
+    text = text.lower()
+    if not re.fullmatch(r"[a-z0-9_]{3,32}", text):
+        raise HTTPException(status_code=422, detail="帳號請用 3～32 字的英文、數字或底線")
+    return text
+
+
 def init_db():
     with db() as conn:
         conn.execute(
             """
             CREATE TABLE IF NOT EXISTS users (
                 id TEXT PRIMARY KEY,
-                email TEXT NOT NULL UNIQUE,
+                username TEXT NOT NULL UNIQUE,
                 password_hash TEXT NOT NULL,
                 created_at INTEGER NOT NULL
             )
             """
         )
+        cols = [row[1] for row in conn.execute("PRAGMA table_info(users)")]
+        if "email" in cols and "username" not in cols:
+            conn.execute("ALTER TABLE users RENAME TO users_legacy")
+            conn.execute(
+                """
+                CREATE TABLE users (
+                    id TEXT PRIMARY KEY,
+                    username TEXT NOT NULL UNIQUE,
+                    password_hash TEXT NOT NULL,
+                    created_at INTEGER NOT NULL
+                )
+                """
+            )
+            conn.execute(
+                """
+                INSERT INTO users (id, username, password_hash, created_at)
+                SELECT id,
+                    lower(CASE WHEN instr(email, '@') > 0
+                          THEN substr(email, 1, instr(email, '@') - 1)
+                          ELSE email END),
+                    password_hash, created_at
+                FROM users_legacy
+                """
+            )
+            conn.execute("DROP TABLE users_legacy")
         conn.execute(
             """
             CREATE TABLE IF NOT EXISTS blobs (
@@ -130,18 +166,24 @@ init_db()
 
 
 class AuthIn(BaseModel):
-    email: str
     password: str = Field(min_length=4, max_length=128)
+    username: str = ""
+    email: str = ""
 
 
 class PasswordChangeIn(BaseModel):
-    email: str
     old_password: str
     new_password: str = Field(min_length=4, max_length=128)
+    username: str = ""
+    email: str = ""
 
 
 class BlobIn(BaseModel):
     payload: dict
+
+
+def _auth_username(body) -> str:
+    return normalize_username(getattr(body, "username", "") or getattr(body, "email", ""))
 
 
 def current_user(authorization: str | None = Header(default=None)) -> dict:
@@ -150,12 +192,12 @@ def current_user(authorization: str | None = Header(default=None)) -> dict:
     payload = read_token(authorization.split(" ", 1)[1].strip())
     with db() as conn:
         row = conn.execute(
-            "SELECT id, email FROM users WHERE id = ?",
+            "SELECT id, username FROM users WHERE id = ?",
             (payload["sub"],),
         ).fetchone()
     if not row:
         raise HTTPException(status_code=401, detail="帳號不存在")
-    return {"id": row["id"], "email": row["email"]}
+    return {"id": row["id"], "username": row["username"]}
 
 
 @app.get("/")
@@ -179,62 +221,58 @@ def health():
 def register(body: AuthIn):
     if not ALLOW_REGISTER:
         raise HTTPException(status_code=403, detail="目前未開放註冊")
-    email = str(body.email).strip().lower()
-    if "@" not in email or "." not in email.split("@")[-1]:
-        raise HTTPException(status_code=422, detail="請輸入有效信箱")
+    username = _auth_username(body)
     user_id = str(uuid.uuid4())
     with db() as conn:
-        exists = conn.execute("SELECT id FROM users WHERE email = ?", (email,)).fetchone()
+        exists = conn.execute("SELECT id FROM users WHERE username = ?", (username,)).fetchone()
         if exists:
-            raise HTTPException(status_code=409, detail="這個信箱已經註冊")
+            raise HTTPException(status_code=409, detail="這個帳號已經註冊")
         conn.execute(
-            "INSERT INTO users (id, email, password_hash, created_at) VALUES (?, ?, ?, ?)",
-            (user_id, email, hash_password(body.password), int(time.time())),
+            "INSERT INTO users (id, username, password_hash, created_at) VALUES (?, ?, ?, ?)",
+            (user_id, username, hash_password(body.password), int(time.time())),
         )
-    token = make_token(user_id, email)
-    return {"access_token": token, "token_type": "bearer", "user": {"id": user_id, "email": email}}
+    token = make_token(user_id, username)
+    return {"access_token": token, "token_type": "bearer", "user": {"id": user_id, "username": username}}
 
 
 @app.post("/auth/login")
 def login(body: AuthIn):
-    email = str(body.email).strip().lower()
-    if "@" not in email:
-        raise HTTPException(status_code=422, detail="請輸入有效信箱")
+    username = _auth_username(body)
     with db() as conn:
         row = conn.execute(
-            "SELECT id, email, password_hash FROM users WHERE email = ?",
-            (email,),
+            "SELECT id, username, password_hash FROM users WHERE username = ?",
+            (username,),
         ).fetchone()
     if not row or not verify_password(body.password, row["password_hash"]):
-        raise HTTPException(status_code=401, detail="信箱或密碼不正確")
-    token = make_token(row["id"], row["email"])
+        raise HTTPException(status_code=401, detail="帳號或密碼不正確")
+    token = make_token(row["id"], row["username"])
     return {
         "access_token": token,
         "token_type": "bearer",
-        "user": {"id": row["id"], "email": row["email"]},
+        "user": {"id": row["id"], "username": row["username"]},
     }
 
 
 @app.post("/auth/change-password")
 def change_password(body: PasswordChangeIn):
-    email = str(body.email).strip().lower()
+    username = _auth_username(body)
     with db() as conn:
         row = conn.execute(
-            "SELECT id, email, password_hash FROM users WHERE email = ?",
-            (email,),
+            "SELECT id, username, password_hash FROM users WHERE username = ?",
+            (username,),
         ).fetchone()
         if not row or not verify_password(body.old_password, row["password_hash"]):
-            raise HTTPException(status_code=401, detail="信箱或舊密碼不正確")
+            raise HTTPException(status_code=401, detail="帳號或舊密碼不正確")
         conn.execute(
             "UPDATE users SET password_hash = ? WHERE id = ?",
             (hash_password(body.new_password), row["id"]),
         )
-    token = make_token(row["id"], row["email"])
+    token = make_token(row["id"], row["username"])
     return {
         "ok": True,
         "access_token": token,
         "token_type": "bearer",
-        "user": {"id": row["id"], "email": row["email"]},
+        "user": {"id": row["id"], "username": row["username"]},
     }
 
 
