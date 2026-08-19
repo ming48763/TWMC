@@ -97,8 +97,14 @@ if api.enabled():
             """,
             unsafe_allow_html=True,
         )
-        if not api.health():
-            st.error(f"連不到後端：{api.base_url()}。請確認 API 已啟動。")
+        if api.is_loopback() and _is_streamlit_cloud():
+            st.error(
+                "雲端 App 無法連你電腦上的 http://127.0.0.1:8000。"
+                "請把後端部署到 Railway／Render，再把 Secrets 的 API_BASE_URL 改成公開網址。"
+                "若要在本機登入，請開 http://localhost:8501 而不是 .streamlit.app。"
+            )
+        elif not api.health():
+            st.error(f"連不到後端：{api.base_url()}。請確認後端視窗還在跑，瀏覽器可打開該網址。")
         mode = st.radio("動作", ["登入", "註冊"], horizontal=True, label_visibility="collapsed")
         with st.form("twmc_api_login"):
             email = st.text_input("信箱")

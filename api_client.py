@@ -25,6 +25,11 @@ def base_url():
     return _secret("API_BASE_URL").rstrip("/")
 
 
+def is_loopback():
+    url = (base_url() or "").lower()
+    return "127.0.0.1" in url or "localhost" in url or "0.0.0.0" in url
+
+
 def enabled():
     return bool(base_url())
 

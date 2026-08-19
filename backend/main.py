@@ -152,6 +152,18 @@ def current_user(authorization: str | None = Header(default=None)) -> dict:
     return {"id": row["id"], "email": row["email"]}
 
 
+@app.get("/")
+def root():
+    return {
+        "ok": True,
+        "service": "TWMC API",
+        "health": "/health",
+        "docs": "/docs",
+        "login": "POST /auth/login",
+        "register": "POST /auth/register",
+    }
+
+
 @app.get("/health")
 def health():
     return {"ok": True, "service": "twmc"}
