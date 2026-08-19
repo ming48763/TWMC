@@ -1,0 +1,16 @@
+.streamlit/secrets.toml
+.env
+.env.*
+!.env.example
+__pycache__/
+*.pyc
+.venv/
+venv/
+ai_analysis_history/
+mainforce_history/
+watchlist.json
+portfolio.json
+investment_notes.json
+name_map.json
+_*.json
+_*.py

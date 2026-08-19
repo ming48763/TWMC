@@ -1,0 +1,666 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8" />
+<style>
+  html, body {
+    margin: 0;
+    padding: 0;
+    background: transparent;
+    overflow: hidden;
+    font-family: "Source Sans Pro", "Microsoft JhengHei", "PingFang TC", sans-serif;
+  }
+
+  #root {
+    display: flex;
+    align-items: stretch;
+    gap: 10px;
+  }
+
+  #boxes {
+    width: 148px;
+    flex-shrink: 0;
+    box-sizing: border-box;
+    border-right: 1px solid #555555;
+    padding-right: 8px;
+    overflow-y: auto;
+    overflow-x: hidden;
+  }
+
+  .box {
+    position: relative;
+    box-sizing: border-box;
+    width: 100%;
+    min-height: 42px;
+    margin-bottom: 6px;
+    padding: 8px 10px;
+    border: 2px solid #555555;
+    border-radius: 6px;
+    background: #111111;
+    color: #fafafa;
+    cursor: pointer;
+    user-select: none;
+    font-size: 15px;
+    font-weight: 600;
+    line-height: 1.3;
+    word-break: break-word;
+  }
+  .box:hover { border-color: #888888; }
+  .box.active { border-color: var(--accent, #ffffff); background: #1c2530; }
+  .box.all { color: #cfcfcf; }
+
+  .box .actions {
+    position: absolute;
+    top: 4px;
+    right: 4px;
+    display: none;
+    gap: 2px;
+  }
+  .box:hover .actions { display: flex; }
+  .box .actions button {
+    width: 18px;
+    height: 18px;
+    border: 0;
+    border-radius: 4px;
+    background: #333333;
+    color: #ffffff;
+    cursor: pointer;
+    font-size: 12px;
+    line-height: 18px;
+    padding: 0;
+  }
+  .box .actions button:hover { background: #555555; }
+
+  .box input {
+    width: 100%;
+    box-sizing: border-box;
+    background: #0e1117;
+    color: #fafafa;
+    border: 1px solid #888888;
+    border-radius: 4px;
+    font-size: 14px;
+    padding: 2px 4px;
+  }
+
+  .box.add {
+    border-style: dashed;
+    color: #cfcfcf;
+    text-align: center;
+  }
+  .box.add:hover { border-color: var(--accent, #ffffff); background: #1c2530; color: #ffffff; }
+
+  #grid {
+    display: grid;
+    gap: 8px;
+    flex: 1;
+    min-width: 0;
+  }
+
+  .card {
+    position: relative;
+    box-sizing: border-box;
+    display: flex;
+    background-color: #111111;
+    border: 2px solid #555555;
+    border-radius: 6px;
+    color: #fafafa;
+    cursor: pointer;
+    user-select: none;
+    overflow: hidden;
+    transition: border-color .12s ease, background-color .12s ease;
+  }
+  .card:hover { border-color: #888888; }
+  .card.active { border-color: var(--accent, #ffffff); background-color: #1c2530; }
+  .card.dragging { opacity: .35; }
+
+  /* 空間足夠：正方形直式排版 */
+  .card.layout-square {
+    aspect-ratio: 1 / 1;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+    padding: 10px 8px;
+    text-align: center;
+  }
+  .card.layout-square .name {
+    font-size: 15px;
+    font-weight: 600;
+    color: #cfcfcf;
+    max-width: 100%;
+    overflow: hidden;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    word-break: break-word;
+  }
+  .card.layout-square .price { font-size: 28px; font-weight: 700; line-height: 1.15; }
+  .card.layout-square .change { font-size: 16px; font-weight: 600; }
+  .card.layout-square.has-tags { padding-bottom: 42px; }
+
+  /* 中等空間：仍直式，但縮小字級、允許較矮 */
+  .card.layout-compact {
+    aspect-ratio: 1 / 1;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 2px;
+    padding: 8px 6px;
+    text-align: center;
+  }
+  .card.layout-compact .name {
+    font-size: 12px;
+    font-weight: 600;
+    color: #cfcfcf;
+    max-width: 100%;
+    overflow: hidden;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    word-break: break-word;
+  }
+  .card.layout-compact .price { font-size: 20px; font-weight: 700; line-height: 1.1; }
+  .card.layout-compact .change { font-size: 13px; font-weight: 600; }
+  .card.layout-compact.has-tags { padding-bottom: 38px; }
+
+  /* 長寬不足：橫式長條，名稱在左、價格在右 */
+  .card.layout-bar {
+    aspect-ratio: auto;
+    min-height: 68px;
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 10px 14px;
+    text-align: left;
+  }
+  .card.layout-bar .meta {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+    flex: 1;
+  }
+  .card.layout-bar .name {
+    font-size: 14px;
+    font-weight: 600;
+    color: #cfcfcf;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .card.layout-bar .quote {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    flex-shrink: 0;
+    gap: 2px;
+  }
+  .card.layout-bar .price { font-size: 22px; font-weight: 700; line-height: 1.1; }
+  .card.layout-bar .change { font-size: 13px; font-weight: 600; }
+  .card.layout-bar.has-tags { min-height: 94px; }
+
+  @keyframes twmc-card-flash {
+    0% {
+      filter: brightness(2.4);
+      text-shadow: 0 0 12px currentColor;
+      transform: scale(1.08);
+    }
+    55% {
+      filter: brightness(1.35);
+      text-shadow: 0 0 5px currentColor;
+      transform: scale(1.03);
+    }
+    100% {
+      filter: brightness(1);
+      text-shadow: none;
+      transform: scale(1);
+    }
+  }
+  .card .price.flash,
+  .card .change.flash {
+    display: inline-block;
+    animation: twmc-card-flash 0.65s ease-out;
+  }
+
+  .rule-tags {
+    position: absolute;
+    left: 6px;
+    right: 6px;
+    bottom: 6px;
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 4px;
+    color: #ffffff;
+    pointer-events: none;
+  }
+  .rule-tag {
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    border-radius: 999px;
+    padding: 2px 6px;
+    font-size: 11px;
+    line-height: 1.2;
+    font-weight: 700;
+    background: rgba(160, 160, 160, .2);
+    border: 1px solid rgba(220, 220, 220, .35);
+  }
+  .rule-tag.buy { color: #ff6b6b; border-color: rgba(239, 35, 42, .75); background: rgba(239, 35, 42, .12); }
+  .rule-tag.sell { color: #62d37b; border-color: rgba(20, 177, 67, .75); background: rgba(20, 177, 67, .12); }
+  .rule-tag.warning { color: #ffd166; border-color: rgba(255, 209, 102, .75); background: rgba(255, 209, 102, .12); }
+  .card.layout-compact .rule-tag { font-size: 9px; padding: 2px 4px; }
+  .card.layout-bar .rule-tags { justify-content: flex-start; left: 14px; }
+
+  .card .remove {
+    position: absolute;
+    top: 6px;
+    right: 8px;
+    width: 22px;
+    height: 22px;
+    line-height: 21px;
+    text-align: center;
+    border-radius: 50%;
+    color: #777777;
+    font-size: 17px;
+    opacity: 0;
+    transition: opacity .12s ease;
+    z-index: 2;
+  }
+  .card:hover .remove { opacity: 1; }
+  .card .remove:hover { background-color: #333333; color: #ffffff; }
+  .card.layout-bar .remove { top: 4px; right: 4px; }
+
+  .card.add {
+    border-style: dashed;
+    color: #cfcfcf;
+    font-size: 17px;
+    font-weight: 600;
+  }
+  .card.add.layout-square,
+  .card.add.layout-compact {
+    align-items: center;
+    justify-content: center;
+  }
+  .card.add.layout-bar {
+    justify-content: center;
+  }
+  .card.add:hover { border-color: var(--accent, #ffffff); background-color: #1c2530; color: #ffffff; }
+</style>
+</head>
+<body>
+<div id="root">
+  <div id="boxes"></div>
+  <div id="grid"></div>
+</div>
+<script>
+(function () {
+  const boxesEl = document.getElementById("boxes");
+  const grid = document.getElementById("grid");
+
+  let groups = [];
+  let items = [];
+  let active = null;
+  let activeGroupId = "all";
+  let columns = 5;
+  let seq = 0;
+  let lastHeight = -1;
+  let draggingCard = null;
+  let didDrag = false;
+  let renamingId = null;
+  let layoutMode = "square"; // square | compact | bar
+  let appliedColumns = 5;
+  let accent = "#ffffff";
+  let allowReselect = false;
+  let prevPrices = {};
+
+  // 正方形卡片建議最小寬度；再小就改 compact / bar
+  const SQUARE_MIN = 150;
+  const COMPACT_MIN = 108;
+
+  function applyAccent() {
+    document.documentElement.style.setProperty("--accent", accent || "#ffffff");
+  }
+
+  function post(message) {
+    window.parent.postMessage(Object.assign({ isStreamlitMessage: true }, message), "*");
+  }
+
+  function currentOrder() {
+    return [...grid.querySelectorAll(".card[data-code]")].map(el => el.dataset.code);
+  }
+
+  function sendValue(action, extra) {
+    seq += 1;
+    const payload = Object.assign({
+      seq: seq,
+      action: action,
+      group_id: activeGroupId,
+      order: currentOrder(),
+      active: active,
+      target: null,
+      name: null
+    }, extra || {});
+    post({
+      type: "streamlit:setComponentValue",
+      value: payload,
+      dataType: "json"
+    });
+  }
+
+  function syncHeight() {
+    const boxesMax = Math.max(grid.getBoundingClientRect().height, 220);
+    boxesEl.style.maxHeight = boxesMax + "px";
+    const height = Math.ceil(Math.max(grid.getBoundingClientRect().height, boxesEl.scrollHeight, 220));
+    if (height !== lastHeight && height > 0) {
+      lastHeight = height;
+      post({ type: "streamlit:setFrameHeight", height: height });
+    }
+  }
+
+  function isAllView() {
+    return activeGroupId === "all";
+  }
+
+  function chooseLayout() {
+    const width = grid.getBoundingClientRect().width || grid.clientWidth || 0;
+    if (width <= 0) {
+      return { mode: layoutMode, cols: appliedColumns };
+    }
+
+    // 先試著維持要求欄數；若單卡太窄，逐步減欄，最後改橫式長條
+    let cols = Math.max(1, columns);
+    while (cols > 1) {
+      const cell = (width - 8 * (cols - 1)) / cols;
+      if (cell >= SQUARE_MIN) {
+        return { mode: "square", cols: cols };
+      }
+      if (cell >= COMPACT_MIN) {
+        return { mode: "compact", cols: cols };
+      }
+      cols -= 1;
+    }
+
+    const oneCol = width;
+    if (oneCol >= SQUARE_MIN) {
+      return { mode: "square", cols: 1 };
+    }
+    if (oneCol >= COMPACT_MIN) {
+      return { mode: "compact", cols: 1 };
+    }
+    // 連一欄正方形都放不下：改橫式，並用較多欄的長條排法
+    const barCols = Math.max(1, Math.min(columns, Math.floor((width + 8) / 220)));
+    return { mode: "bar", cols: Math.max(1, barCols) };
+  }
+
+  function buildLine(className, text) {
+    const line = document.createElement("div");
+    line.className = className;
+    line.textContent = text;
+    return line;
+  }
+
+  function applyCardLayout(card) {
+    card.classList.remove("layout-square", "layout-compact", "layout-bar");
+    card.classList.add("layout-" + layoutMode);
+  }
+
+  function buildCard(item) {
+    const card = document.createElement("div");
+    card.className = "card" + (item.code === active ? " active" : "");
+    applyCardLayout(card);
+    card.dataset.code = item.code;
+    card.draggable = !isAllView();
+    card.style.color = item.color;
+
+    const nameText = item.code + " " + item.name;
+    const priceEl = buildLine("price", item.price);
+    const changeEl = buildLine("change", item.change);
+    const prev = prevPrices[item.code];
+    if (prev != null && prev !== item.price && item.price !== "－") {
+      priceEl.classList.add("flash");
+      changeEl.classList.add("flash");
+    }
+    prevPrices[item.code] = item.price;
+
+    if (layoutMode === "bar") {
+      const meta = document.createElement("div");
+      meta.className = "meta";
+      meta.appendChild(buildLine("name", nameText));
+
+      const quote = document.createElement("div");
+      quote.className = "quote";
+      quote.appendChild(priceEl);
+      quote.appendChild(changeEl);
+
+      card.appendChild(meta);
+      card.appendChild(quote);
+    } else {
+      card.appendChild(buildLine("name", nameText));
+      card.appendChild(priceEl);
+      card.appendChild(changeEl);
+    }
+
+    const tags = Array.isArray(item.tags) ? item.tags : [];
+    if (tags.length) {
+      card.classList.add("has-tags");
+      const tagsEl = document.createElement("div");
+      tagsEl.className = "rule-tags";
+      tags.forEach(function (tag) {
+        const badge = document.createElement("span");
+        badge.className = "rule-tag " + (tag.tone || "");
+        badge.textContent = tag.text || "";
+        if (tag.detail) badge.title = tag.detail;
+        tagsEl.appendChild(badge);
+      });
+      card.appendChild(tagsEl);
+    }
+
+    if (!isAllView()) {
+      const remove = document.createElement("div");
+      remove.className = "remove";
+      remove.textContent = "\u00d7";
+      remove.title = "\u5f9e\u5361\u7247\u76d2\u79fb\u9664";
+      remove.addEventListener("click", function (event) {
+        event.stopPropagation();
+        sendValue("remove", { target: item.code });
+      });
+      card.appendChild(remove);
+    }
+
+    card.addEventListener("click", function () {
+      if (didDrag) { didDrag = false; return; }
+      if (item.code === active && !allowReselect) { return; }
+      active = item.code;
+      render();
+      sendValue("select");
+    });
+
+    card.addEventListener("dragstart", function (event) {
+      if (isAllView()) { event.preventDefault(); return; }
+      draggingCard = card;
+      didDrag = false;
+      card.classList.add("dragging");
+      event.dataTransfer.effectAllowed = "move";
+      event.dataTransfer.setData("text/plain", item.code);
+    });
+
+    card.addEventListener("dragend", function () {
+      card.classList.remove("dragging");
+      draggingCard = null;
+      if (didDrag) { sendValue("reorder"); }
+    });
+
+    return card;
+  }
+
+  function buildAddCard() {
+    const card = document.createElement("div");
+    card.className = "card add";
+    applyCardLayout(card);
+    card.textContent = "\uff0b \u65b0\u589e\u500b\u80a1";
+    card.addEventListener("click", function () { sendValue("add"); });
+    return card;
+  }
+
+  function startRename(group) {
+    renamingId = group.id;
+    render();
+  }
+
+  function finishRename(group, value) {
+    const name = (value || "").trim();
+    renamingId = null;
+    if (name && name !== group.name) {
+      sendValue("rename_group", { target: group.id, name: name });
+    } else {
+      render();
+    }
+  }
+
+  function buildBox(group) {
+    const box = document.createElement("div");
+    const isAll = group.id === "all";
+    box.className = "box" + (isAll ? " all" : "") + (group.id === activeGroupId ? " active" : "");
+
+    if (renamingId === group.id && !isAll) {
+      const input = document.createElement("input");
+      input.value = group.name;
+      input.addEventListener("click", function (event) { event.stopPropagation(); });
+      input.addEventListener("keydown", function (event) {
+        if (event.key === "Enter") { finishRename(group, input.value); }
+        if (event.key === "Escape") { renamingId = null; render(); }
+      });
+      input.addEventListener("blur", function () { finishRename(group, input.value); });
+      box.appendChild(input);
+      setTimeout(function () { input.focus(); input.select(); }, 0);
+      return box;
+    }
+
+    box.textContent = group.name;
+    box.addEventListener("click", function () {
+      if (group.id === activeGroupId) { return; }
+      activeGroupId = group.id;
+      render();
+      sendValue("select_group", { group_id: group.id });
+    });
+
+    if (!isAll) {
+      const actions = document.createElement("div");
+      actions.className = "actions";
+
+      const rename = document.createElement("button");
+      rename.type = "button";
+      rename.title = "\u91cd\u65b0\u547d\u540d";
+      rename.textContent = "\u270e";
+      rename.addEventListener("click", function (event) {
+        event.stopPropagation();
+        startRename(group);
+      });
+
+      const remove = document.createElement("button");
+      remove.type = "button";
+      remove.title = "\u522a\u9664\u5361\u7247\u76d2";
+      remove.textContent = "\u00d7";
+      remove.addEventListener("click", function (event) {
+        event.stopPropagation();
+        sendValue("delete_group", { target: group.id });
+      });
+
+      actions.appendChild(rename);
+      actions.appendChild(remove);
+      box.appendChild(actions);
+    }
+
+    return box;
+  }
+
+  function buildAddBox() {
+    const box = document.createElement("div");
+    box.className = "box add";
+    box.textContent = "\uff0b \u65b0\u589e\u5361\u7247\u76d2";
+    box.addEventListener("click", function () { sendValue("create_group"); });
+    return box;
+  }
+
+  grid.addEventListener("dragover", function (event) {
+    if (!draggingCard || isAllView()) { return; }
+    event.preventDefault();
+    const over = event.target.closest ? event.target.closest(".card[data-code]") : null;
+    if (!over || over === draggingCard) { return; }
+    const box = over.getBoundingClientRect();
+    // 直式用左右半，橫式用上下半，決定插入位置
+    let insertBefore;
+    if (layoutMode === "bar") {
+      insertBefore = (event.clientY - box.top) < box.height / 2;
+    } else {
+      insertBefore = (event.clientX - box.left) < box.width / 2;
+    }
+    grid.insertBefore(draggingCard, insertBefore ? over : over.nextSibling);
+    didDrag = true;
+  });
+
+  grid.addEventListener("drop", function (event) { event.preventDefault(); });
+
+  function render() {
+    const choice = chooseLayout();
+    layoutMode = choice.mode;
+    appliedColumns = choice.cols;
+
+    boxesEl.textContent = "";
+    const allBox = { id: "all", name: "\u5168\u90e8" };
+    boxesEl.appendChild(buildBox(allBox));
+    groups.forEach(function (group) { boxesEl.appendChild(buildBox(group)); });
+    boxesEl.appendChild(buildAddBox());
+
+    grid.style.gridTemplateColumns = "repeat(" + appliedColumns + ", 1fr)";
+    grid.textContent = "";
+    items.forEach(function (item) { grid.appendChild(buildCard(item)); });
+    if (!isAllView()) {
+      grid.appendChild(buildAddCard());
+    }
+    syncHeight();
+  }
+
+  window.addEventListener("message", function (event) {
+    const data = event.data;
+    if (!data || data.type !== "streamlit:render") { return; }
+    items = data.args.items || [];
+    groups = data.args.groups || [];
+    active = data.args.active || null;
+    activeGroupId = data.args.active_group_id || "all";
+    columns = data.args.columns || 5;
+    accent = data.args.accent || "#ffffff";
+    allowReselect = !!data.args.allow_reselect;
+    applyAccent();
+    if (renamingId && !groups.some(function (g) { return g.id === renamingId; })) {
+      renamingId = null;
+    }
+    render();
+  });
+
+  let resizeTimer = null;
+  function onResize() {
+    if (resizeTimer) { clearTimeout(resizeTimer); }
+    resizeTimer = setTimeout(function () {
+      const before = layoutMode + ":" + appliedColumns;
+      const choice = chooseLayout();
+      if (choice.mode + ":" + choice.cols !== before) {
+        render();
+      } else {
+        syncHeight();
+      }
+    }, 80);
+  }
+
+  new ResizeObserver(onResize).observe(grid);
+  new ResizeObserver(syncHeight).observe(boxesEl);
+  window.addEventListener("resize", onResize);
+
+  post({ type: "streamlit:componentReady", apiVersion: 1 });
+})();
+</script>
+</body>
+</html>

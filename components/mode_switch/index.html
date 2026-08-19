@@ -1,0 +1,288 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8" />
+<style>
+  html, body {
+    margin: 0;
+    padding: 0;
+    background: transparent;
+    overflow: hidden;
+    font-family: "Source Sans Pro", "Microsoft JhengHei", "PingFang TC", sans-serif;
+  }
+
+  .wrap {
+    position: relative;
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 10px;
+    padding: 6px;
+    border-radius: 14px;
+    background: linear-gradient(180deg, rgba(255,255,255,0.05), rgba(255,255,255,0.015));
+  }
+
+  .slider {
+    position: absolute;
+    top: 6px;
+    left: 6px;
+    height: calc(100% - 12px);
+    width: calc((100% - 12px - 20px) / 3);
+    border-radius: 12px;
+    pointer-events: none;
+    z-index: 0;
+    transition: transform .38s cubic-bezier(.22, 1, .36, 1),
+                background .28s ease,
+                box-shadow .28s ease;
+    background: color-mix(in srgb, var(--slide-accent, #ffffff) 16%, #1a1a1a);
+    box-shadow: 0 0 0 1px color-mix(in srgb, var(--slide-accent, #ffffff) 55%, transparent),
+                0 10px 28px color-mix(in srgb, var(--slide-accent, #ffffff) 22%, transparent),
+                inset 0 0 24px color-mix(in srgb, var(--slide-accent, #ffffff) 12%, transparent);
+  }
+
+  .pill {
+    position: relative;
+    isolation: isolate;
+    overflow: hidden;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid rgba(255,255,255,0.14);
+    border-radius: 12px;
+    background: #141414;
+    color: #cfcfcf;
+    height: 68px;
+    min-height: 68px;
+    cursor: pointer;
+    user-select: none;
+    z-index: 1;
+    transition: transform .2s ease, border-color .2s ease, color .2s ease, background .2s ease;
+  }
+  .pill:hover {
+    transform: translateY(-2px);
+    color: #fff;
+    border-color: color-mix(in srgb, var(--accent) 45%, rgba(255,255,255,0.2));
+  }
+  .pill:active { transform: translateY(0) scale(0.985); }
+
+  .pill .label {
+    position: relative;
+    z-index: 2;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+    width: 100%;
+    height: 100%;
+    margin: 0;
+    padding: 0 14px;
+    text-align: center;
+  }
+  .pill .title {
+    margin: 0;
+    font-size: 22px;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    line-height: 1;
+    transition: letter-spacing .25s ease;
+  }
+  .pill .hint {
+    margin: 0;
+    font-size: 13px;
+    line-height: 1;
+    opacity: 0.72;
+    transition: opacity .2s ease;
+  }
+
+  .pill .glow {
+    position: absolute;
+    inset: -45%;
+    opacity: 0;
+    transition: opacity .3s ease;
+    background: radial-gradient(circle at 28% 28%, var(--accent), transparent 58%);
+    z-index: 0;
+  }
+  .pill .sheen {
+    position: absolute;
+    top: 0;
+    left: -70%;
+    width: 42%;
+    height: 100%;
+    background: linear-gradient(90deg, transparent, rgba(255,255,255,0.22), transparent);
+    transform: skewX(-18deg);
+    opacity: 0;
+    z-index: 1;
+    pointer-events: none;
+  }
+  .pill .ripple {
+    position: absolute;
+    border-radius: 50%;
+    transform: scale(0);
+    opacity: 0.35;
+    pointer-events: none;
+    z-index: 3;
+    background: color-mix(in srgb, var(--accent) 70%, #fff);
+  }
+
+  .pill.active {
+    color: #fff;
+    border-color: transparent;
+    background: transparent;
+  }
+  .pill.active .title { letter-spacing: 0.06em; }
+  .pill.active .hint { opacity: 0.9; }
+  .pill.active .glow {
+    opacity: 0.5;
+    animation: breathe 2.4s ease-in-out infinite;
+  }
+  .pill.active .sheen {
+    opacity: 1;
+    animation: sheen 1.45s ease;
+  }
+
+  .pill[data-mode="analyze"] { --accent: #ffffff; }
+  .pill[data-mode="simulated"] { --accent: #b042ff; }
+  .pill[data-mode="investment"] { --accent: #ff66cc; }
+
+  @keyframes sheen {
+    from { left: -70%; }
+    to { left: 140%; }
+  }
+  @keyframes breathe {
+    0%, 100% { opacity: 0.42; transform: scale(1); }
+    50% { opacity: 0.62; transform: scale(1.04); }
+  }
+  @keyframes ripple-out {
+    to { transform: scale(2.6); opacity: 0; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap" id="wrap">
+  <div class="slider" id="slider" aria-hidden="true"></div>
+  <div class="pill" data-mode="analyze" data-index="0">
+    <div class="glow"></div>
+    <div class="sheen"></div>
+    <div class="label">
+      <div class="title">分析模式</div>
+      <div class="hint">看盤・籌碼・走勢</div>
+    </div>
+  </div>
+  <div class="pill" data-mode="simulated" data-index="1">
+    <div class="glow"></div>
+    <div class="sheen"></div>
+    <div class="label">
+      <div class="title">模擬模式</div>
+      <div class="hint">虛擬資金練功</div>
+    </div>
+  </div>
+  <div class="pill" data-mode="investment" data-index="2">
+    <div class="glow"></div>
+    <div class="sheen"></div>
+    <div class="label">
+      <div class="title">投資模式</div>
+      <div class="hint">實盤交易紀錄</div>
+    </div>
+  </div>
+</div>
+<script>
+(function () {
+  const accents = {
+    analyze: "#ffffff",
+    simulated: "#b042ff",
+    investment: "#ff66cc",
+  };
+  let active = "analyze";
+  const slider = document.getElementById("slider");
+  const wrap = document.getElementById("wrap");
+
+  function post(message) {
+    window.parent.postMessage(Object.assign({ isStreamlitMessage: true }, message), "*");
+  }
+
+  // 高度必須在 componentReady 之後才回報，先送會被 Streamlit 丟掉、iframe 停在 0 高度
+  function syncHeight() {
+    const height = Math.ceil(wrap.getBoundingClientRect().height) + 4;
+    post({ type: "streamlit:setFrameHeight", height: Math.max(height, 84) });
+  }
+
+  function moveSlider(animate) {
+    const pill = document.querySelector('.pill[data-mode="' + active + '"]');
+    if (!pill) return;
+    const idx = Number(pill.dataset.index || 0);
+    const gap = 10;
+    slider.style.setProperty("--slide-accent", accents[active] || "#ffffff");
+    if (!animate) {
+      slider.style.transition = "none";
+    }
+    slider.style.transform = "translateX(" + (idx * 100) + "%) translateX(" + (idx * gap) + "px)";
+    if (!animate) {
+      // force reflow then restore transition
+      void slider.offsetWidth;
+      slider.style.transition = "";
+    }
+  }
+
+  function render(animate) {
+    document.querySelectorAll(".pill").forEach(function (pill) {
+      const on = pill.dataset.mode === active;
+      pill.classList.toggle("active", on);
+      if (on) {
+        // restart sheen
+        const sheen = pill.querySelector(".sheen");
+        if (sheen && animate) {
+          sheen.style.animation = "none";
+          void sheen.offsetWidth;
+          sheen.style.animation = "";
+        }
+      }
+    });
+    moveSlider(animate !== false);
+  }
+
+  function spawnRipple(pill, clientX, clientY) {
+    const rect = pill.getBoundingClientRect();
+    const size = Math.max(rect.width, rect.height);
+    const ripple = document.createElement("span");
+    ripple.className = "ripple";
+    ripple.style.width = ripple.style.height = size + "px";
+    ripple.style.left = (clientX - rect.left - size / 2) + "px";
+    ripple.style.top = (clientY - rect.top - size / 2) + "px";
+    ripple.style.animation = "ripple-out .55s ease-out forwards";
+    pill.appendChild(ripple);
+    setTimeout(function () { ripple.remove(); }, 600);
+  }
+
+  document.querySelectorAll(".pill").forEach(function (pill) {
+    pill.addEventListener("click", function (e) {
+      if (pill.dataset.mode === active) { return; }
+      spawnRipple(pill, e.clientX, e.clientY);
+      active = pill.dataset.mode;
+      render(true);
+      post({ type: "streamlit:setComponentValue", value: active, dataType: "json" });
+    });
+  });
+
+  window.addEventListener("message", function (event) {
+    const data = event.data;
+    if (!data || data.type !== "streamlit:render") { return; }
+    const next = data.args.active || "analyze";
+    const changed = next !== active;
+    active = next;
+    render(changed);
+    syncHeight();
+  });
+
+  window.addEventListener("resize", function () {
+    moveSlider(false);
+    syncHeight();
+  });
+
+  render(false);
+  post({ type: "streamlit:componentReady", apiVersion: 1 });
+  syncHeight();
+  new ResizeObserver(syncHeight).observe(wrap);
+})();
+</script>
+</body>
+</html>
