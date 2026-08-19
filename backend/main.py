@@ -131,7 +131,13 @@ init_db()
 
 class AuthIn(BaseModel):
     email: str
-    password: str = Field(min_length=6, max_length=128)
+    password: str = Field(min_length=4, max_length=128)
+
+
+class PasswordChangeIn(BaseModel):
+    email: str
+    old_password: str
+    new_password: str = Field(min_length=4, max_length=128)
 
 
 class BlobIn(BaseModel):
@@ -203,6 +209,29 @@ def login(body: AuthIn):
         raise HTTPException(status_code=401, detail="信箱或密碼不正確")
     token = make_token(row["id"], row["email"])
     return {
+        "access_token": token,
+        "token_type": "bearer",
+        "user": {"id": row["id"], "email": row["email"]},
+    }
+
+
+@app.post("/auth/change-password")
+def change_password(body: PasswordChangeIn):
+    email = str(body.email).strip().lower()
+    with db() as conn:
+        row = conn.execute(
+            "SELECT id, email, password_hash FROM users WHERE email = ?",
+            (email,),
+        ).fetchone()
+        if not row or not verify_password(body.old_password, row["password_hash"]):
+            raise HTTPException(status_code=401, detail="信箱或舊密碼不正確")
+        conn.execute(
+            "UPDATE users SET password_hash = ? WHERE id = ?",
+            (hash_password(body.new_password), row["id"]),
+        )
+    token = make_token(row["id"], row["email"])
+    return {
+        "ok": True,
         "access_token": token,
         "token_type": "bearer",
         "user": {"id": row["id"], "email": row["email"]},
