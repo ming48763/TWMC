@@ -50,6 +50,9 @@ st.set_page_config(
     initial_sidebar_state="collapsed"
 )
 
+# 強制不走 FastAPI 登入頁（Secrets 裡就算還有 API_BASE_URL 也忽略）
+api.STREAMLIT_API_ENABLED = False
+
 
 # 透過 CSS 放大整個介面的文字大小
 st.markdown("""
@@ -7690,17 +7693,6 @@ _cards_session = taiwan_equity_session_status()
 _cards_live_every = (
     timedelta(seconds=2) if _cards_session.get("是否開盤中") else None
 )
-
-if api.logged_in():
-    user_name = (st.session_state.get("api_user") or {}).get("username") or ""
-    acc, btn = st.columns([5, 1])
-    with acc:
-        st.caption(f"已登入 {user_name}")
-    with btn:
-        if st.button("登出", use_container_width=True, key="twmc_logout"):
-            for key in ("api_token", "api_user"):
-                st.session_state.pop(key, None)
-            st.rerun()
 
 with st.container(key="mode_switch_wrap"):
     mode_event = mode_switch_component(
